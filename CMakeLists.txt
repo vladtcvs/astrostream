@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Пути к OBS и INDI
 set(OBS_INCLUDE_DIR "/usr/include/obs" CACHE PATH "OBS includes")
 set(OBS_LIB_DIR "/usr/lib" CACHE PATH "OBS libs")
-set(INDI_INCLUDE_DIR "/usr/include/libindi" CACHE PATH "INDI includes")
+set(INDI_INCLUDE_DIR "/usr/local/include/libindi" CACHE PATH "INDI includes")
 set(INDI_LIB_DIR "/usr/lib" CACHE PATH "INDI libs")
 
 include_directories(${OBS_INCLUDE_DIR})
@@ -23,7 +23,9 @@ target_link_libraries(indiobs
     indiclient
     pthread
     stdc++
+    cfitsio
 )
 set_target_properties(indiobs PROPERTIES PREFIX "" SUFFIX ".so")
+
 
 # На Windows нужно будет линковать obs.lib, indi.lib
