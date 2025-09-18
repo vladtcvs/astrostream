@@ -165,7 +165,6 @@ public:
             //std::cout << "Copy data" << std::endl;
             for (int y = 0; y < obs_source->height; y++)
             {
-                std::cout << y << std::endl;
                 for (int x = 0; x < obs_source->width; x++)
                 {
                     int w = obs_source->width;
