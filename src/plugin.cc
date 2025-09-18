@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <unistd.h>
 #include <fitsio.h>
+#include <jpeglib.h>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("indilib_obs", "en-US")
@@ -103,12 +104,14 @@ public:
 
     void indiFillFrame(IBLOB *indiBlob)
     {
+        void *blob = indiBlob->blob;
+        size_t size = indiBlob->size;
+
         if (!strcmp(indiBlob->format, ".fits"))
         {
             fitsfile *fptr;
             int status = 0;
-            size_t size = indiBlob->size;
-            if (fits_open_memfile(&fptr, "mem://blob", READONLY, &indiBlob->blob, &size, 0, nullptr, &status) != 0) {
+            if (fits_open_memfile(&fptr, "mem://blob", READONLY, &blob, &size, 0, nullptr, &status) != 0) {
                 blog(LOG_INFO, "Can not read fits, skipping");
                 return;
             }
@@ -159,7 +162,7 @@ public:
             // Close FITS file
             fits_close_file(fptr, &status);
 
-            std::cout << "Copy data" << std::endl;
+            //std::cout << "Copy data" << std::endl;
             for (int y = 0; y < obs_source->height; y++)
             {
                 std::cout << y << std::endl;
@@ -182,6 +185,58 @@ public:
 
             blog(LOG_INFO, "Fill frame %ix%i", obs_source->width, obs_source->height);
             //memset(obs_source->rgb_frame.data(), 155, obs_source->width * obs_source->height * 4);
+        } else if (!strcmp(indiBlob->format, ".stream_jpg")) {
+            
+
+            struct jpeg_decompress_struct cinfo;
+            struct jpeg_error_mgr jerr;
+            cinfo.err = jpeg_std_error(&jerr);
+            jpeg_create_decompress(&cinfo);
+
+            // Set up JPEG data source from bp->blob
+            jpeg_mem_src(&cinfo, static_cast<unsigned char*>(blob), size);
+
+            // Read JPEG header
+            jpeg_read_header(&cinfo, true);
+
+            // Start decompression (assume 8-bit RGB)
+            jpeg_start_decompress(&cinfo);
+
+            int components = cinfo.output_components; // Should be 3 for RGB
+            if (components != 3) {
+                std::cerr << "Expected 3 components (RGB), got " << components << std::endl;
+                jpeg_destroy_decompress(&cinfo);
+                return;
+            }
+
+            // Allocate buffer for pixel data
+            obs_source->width = cinfo.output_width;
+            obs_source->height = cinfo.output_height;
+            obs_source->rgb_frame.resize(obs_source->width * obs_source->height * 4);
+
+            // Allocate buffer for one scanline
+            std::vector<uint8_t> scanline(obs_source->width * 3);
+            JSAMPROW row_pointer[1] = {scanline.data()};
+
+            // Read pixel data into a full image buffer
+            size_t line = 0;
+            while (cinfo.output_scanline < cinfo.output_height) {
+                jpeg_read_scanlines(&cinfo, row_pointer, 1);
+                for (int x = 0; x < obs_source->width; x++) {
+                    obs_source->rgb_frame.data()[4*(line * obs_source->width + x) + 0] = scanline.data()[3*x + 0];
+                    obs_source->rgb_frame.data()[4*(line * obs_source->width + x) + 1] = scanline.data()[3*x + 1];
+                    obs_source->rgb_frame.data()[4*(line * obs_source->width + x) + 2] = scanline.data()[3*x + 2];
+                    obs_source->rgb_frame.data()[4*(line * obs_source->width + x) + 3] = 255;
+                }
+                line++;
+            }
+
+            // Finish decompression
+            jpeg_finish_decompress(&cinfo);
+            jpeg_destroy_decompress(&cinfo);
+
+            
+
         } else {
             blog(LOG_INFO, "Unknown blob format %s, skipping", indiBlob->format);
             return;

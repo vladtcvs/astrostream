@@ -24,6 +24,7 @@ target_link_libraries(indiobs
     pthread
     stdc++
     cfitsio
+    jpeg
 )
 set_target_properties(indiobs PROPERTIES PREFIX "" SUFFIX ".so")
 
