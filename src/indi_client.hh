@@ -32,6 +32,9 @@ private:
 public:
     ObsIndiClient(std::mutex &mutex) : frame_mutex(mutex) {}
 
+    bool connectServer() override;
+    bool disconnectServer(int exit_code = 0) override;
+
     std::pair<std::string, std::string> ccddev_decode(const std::string& ccddev);
     std::string ccddev_encode(const std::pair<std::string, std::string> &ccd);
 

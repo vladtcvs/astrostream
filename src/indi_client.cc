@@ -18,6 +18,8 @@
 #include <iostream>
 #include <obs-module.h>
 
+#include "no_signal.h"
+
 int ObsIndiClient::indiFrameWidth() const
 {
     return width;
@@ -43,6 +45,21 @@ std::pair<std::string, std::string> ObsIndiClient::indiCurrentCCD() const
     return current_ccd;
 }
 
+bool ObsIndiClient::connectServer()
+{
+    bool res = INDI::BaseClient::connectServer();
+    dummyFillFrame();
+    return res;
+}
+
+bool ObsIndiClient::disconnectServer(int exit_code)
+{
+    ccds.clear();
+    current_ccd = std::make_pair("", "");
+    dummyFillFrame();
+    return INDI::BaseClient::disconnectServer(exit_code);
+}
+
 void ObsIndiClient::selectCCD(const std::string &ccddev)
 {
     auto ccd = ccddev_decode(ccddev);
@@ -51,7 +68,25 @@ void ObsIndiClient::selectCCD(const std::string &ccddev)
 
 void ObsIndiClient::selectCCD(const std::pair<std::string, std::string> &ccd)
 {
+    if (current_ccd == ccd)
+        return;
+
+    auto property_name = current_ccd.first;
+    auto device_name = current_ccd.second;
+    if (property_name != "" && device_name != "") {
+        std::cout << "Disable blob data on " << property_name << ":" << device_name << std::endl;
+        setBLOBMode(B_NEVER, device_name.c_str(), property_name.c_str());
+    }
+
     current_ccd = ccd;
+
+    property_name = current_ccd.first;
+    device_name = current_ccd.second;
+    if (property_name != "" && device_name != "") {
+        std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
+        setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
+    }
+    dummyFillFrame();
 }
 
 std::pair<std::string, std::string> ObsIndiClient::ccddev_decode(const std::string& ccddev)
@@ -180,25 +215,30 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
         return;
     }
 
+    int imgtype = TBYTE;
     int bpp = 1;
-    if (bitpix == 16)
+    if (bitpix == 16) {
         bpp = 2;
-    else if (bitpix == 32)
+        imgtype = TUSHORT;
+    } else if (bitpix == 32) {
         bpp = 4;
+        imgtype = TUINT;
+    }
 
     // Allocate buffer for pixel data
     width = naxes[0];
     height = naxes[1];
     rgba_frame.resize(width * height * 4);
 
-    long nbytes = naxes[0] * naxes[1] * bpp;
+    long npixels = naxes[0] * naxes[1];
     if (naxis == 3)
-        nbytes *= naxes[2];
+        npixels *= naxes[2];
 
-    std::vector<uint8_t> pixels(nbytes);
+    std::vector<uint8_t> pixels(npixels * bpp);
 
     // Read image data
-    if (fits_read_img(fptr, TBYTE, 1, nbytes, nullptr, pixels.data(), nullptr, &status))
+    int img_type;
+    if (fits_read_img(fptr, imgtype, 1, npixels, nullptr, pixels.data(), nullptr, &status))
     {
         std::cerr << "Error reading image data" << std::endl;
         fits_report_error(stderr, status);
@@ -254,11 +294,11 @@ void ObsIndiClient::dummyFillFrame()
 {
     // Display dummy image
     // TODO: add "no signal" text
-    width = 640;
-    height = 480;
+    width = no_signal_image.width;
+    height = no_signal_image.height;
     blog(LOG_INFO, "Fill dummy frame %ix%i", width, height);
     rgba_frame.resize(width * height * 4);
-    memset(rgba_frame.data(), 255, width * height * 4);
+    memcpy(rgba_frame.data(), no_signal_image.pixel_data, width * height * 4);
 }
 
 void ObsIndiClient::newDevice(INDI::BaseDevice baseDevice)
@@ -294,6 +334,7 @@ void ObsIndiClient::newProperty(INDI::Property property)
     ccds.push_back(ccd);
     if (ccd == current_ccd)
     {
+        std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
         setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
     }
 }
@@ -333,7 +374,7 @@ void ObsIndiClient::removeProperty(INDI::Property property)
 
 void ObsIndiClient::newMessage(INDI::BaseDevice dp, int messageID)
 {
-    std::cout << "New message from " << dp.getDeviceName() << ": " << dp.messageQueue(messageID) << std::endl;
+    //std::cout << "New message from " << dp.getDeviceName() << ": " << dp.messageQueue(messageID) << std::endl;
 }
 
 void ObsIndiClient::processBLOB(IBLOB *indiBlob)

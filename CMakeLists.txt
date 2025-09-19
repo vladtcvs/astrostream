@@ -15,7 +15,7 @@ include_directories(${INDI_INCLUDE_DIR})
 link_directories(${OBS_LIB_DIR})
 link_directories(${INDI_LIB_DIR})
 
-add_library(indiobs SHARED src/plugin.cc src/indi_client.cc)
+add_library(indiobs SHARED src/plugin.cc src/indi_client.cc src/no_signal.c)
 
 # На Linux
 target_link_libraries(indiobs

@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <unistd.h>
 
-
 #include "indi_client.hh"
 
 OBS_DECLARE_MODULE()
