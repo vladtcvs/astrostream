@@ -19,7 +19,7 @@ target_include_directories(astrostream PUBLIC ${INDI_INCLUDE_DIRS})
 target_link_libraries(astrostream
     pthread
     stdc++
-    ${INDI_LIBRARIES}
+    indiclient
     ${OBS_LIBRARIES}
     ${CFITSIO_LIBRARIES}
     ${JPEG_LIBRARIES}
