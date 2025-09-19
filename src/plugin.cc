@@ -150,8 +150,7 @@ static obs_properties_t *indilib_source_get_properties(void *data)
                 if (s->connected) {
                     usleep(100000);
                     for (auto ccd : s->indiClient->indiCCDs()) {
-                        auto ccddev = s->indiClient->ccddev_encode(ccd);
-                        obs_property_list_add_string(ccd_list, ccddev.c_str(), ccddev.c_str());
+                        obs_property_list_add_string(ccd_list, ccd.c_str(), ccd.c_str());
                     }
                 }
             }
@@ -174,8 +173,7 @@ static obs_properties_t *indilib_source_get_properties(void *data)
                 if (s->connected) {
                     usleep(100000);
                     for (auto ccd : s->indiClient->indiCCDs()) {
-                        auto ccddev = s->indiClient->ccddev_encode(ccd);
-                        obs_property_list_add_string(ccd_list, ccddev.c_str(), ccddev.c_str());
+                        obs_property_list_add_string(ccd_list, ccd.c_str(), ccd.c_str());
                     }
                 }
             }
@@ -195,17 +193,13 @@ static obs_properties_t *indilib_source_get_properties(void *data)
         [](void *data, obs_properties_t *props, obs_property_t *property, obs_data_t *settings) -> bool {
             IndiObsSource *s = reinterpret_cast<IndiObsSource *>(data);
 
-            std::string ccddev = obs_data_get_string(settings, "ccd");
-            auto ccd = s->indiClient->ccddev_decode(ccddev);
-            if (ccd != s->indiClient->indiCurrentCCD()) {
-                s->indiClient->selectCCD(ccd);
-            }
+            std::string ccd = obs_data_get_string(settings, "ccd");
+            s->indiClient->selectCCD(ccd);
             return true;
         }, s);
 
     for (auto ccd : s->indiClient->indiCCDs()) {
-        auto ccddev = s->indiClient->ccddev_encode(ccd);
-        obs_property_list_add_string(list, ccddev.c_str(), ccddev.c_str());
+        obs_property_list_add_string(list, ccd.c_str(), ccd.c_str());
     }
 
     return props;

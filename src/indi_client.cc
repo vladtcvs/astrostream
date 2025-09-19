@@ -35,74 +35,59 @@ const std::vector<uint8_t>& ObsIndiClient::indiFrame() const
     return rgba_frame;
 }
 
-std::list<std::pair<std::string, std::string>> ObsIndiClient::indiCCDs() const
+std::list<std::string> ObsIndiClient::indiCCDs() const
 {
+    std::list<std::string> ccds;
+    for (auto it = devices.begin(); it != devices.end(); it++) {
+        if (it->second.isCCD)
+            ccds.push_back(it->second.device_name);
+    }
     return ccds;
 }
 
-std::pair<std::string, std::string> ObsIndiClient::indiCurrentCCD() const
+std::string ObsIndiClient::indiCurrentCCD() const
 {
     return current_ccd;
 }
 
 bool ObsIndiClient::connectServer()
 {
-    bool res = INDI::BaseClient::connectServer();
+    devices.clear();
     dummyFillFrame();
-    return res;
+    return INDI::BaseClient::connectServer();
 }
 
 bool ObsIndiClient::disconnectServer(int exit_code)
 {
-    ccds.clear();
-    current_ccd = std::make_pair("", "");
+    devices.clear();
+    current_ccd = "";
     dummyFillFrame();
     return INDI::BaseClient::disconnectServer(exit_code);
 }
 
-void ObsIndiClient::selectCCD(const std::string &ccddev)
-{
-    auto ccd = ccddev_decode(ccddev);
-    selectCCD(ccd);
-}
-
-void ObsIndiClient::selectCCD(const std::pair<std::string, std::string> &ccd)
+void ObsIndiClient::selectCCD(const std::string &ccd)
 {
     if (current_ccd == ccd)
         return;
 
-    auto property_name = current_ccd.first;
-    auto device_name = current_ccd.second;
-    if (std::find(ccds.begin(), ccds.end(), current_ccd) != ccds.end()) {
+    if (current_ccd != "" && devices.find(current_ccd) != devices.end()) {
+        auto property_name = devices[current_ccd].property_name;
+        auto device_name = devices[current_ccd].device_name;
         std::cout << "Disable blob data on " << property_name << ":" << device_name << std::endl;
         setBLOBMode(B_NEVER, device_name.c_str(), property_name.c_str());
     }
 
     current_ccd = ccd;
 
-    property_name = current_ccd.first;
-    device_name = current_ccd.second;
-    if (std::find(ccds.begin(), ccds.end(), current_ccd) != ccds.end()) {
-        std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
-        setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
+    if (current_ccd != "" && devices.find(current_ccd) != devices.end()) {
+        if (devices[current_ccd].isCCD) {
+            auto property_name = devices[current_ccd].property_name;
+            auto device_name = devices[current_ccd].device_name;
+            std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
+            setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
+        }
     }
     dummyFillFrame();
-}
-
-std::pair<std::string, std::string> ObsIndiClient::ccddev_decode(const std::string& ccddev)
-{
-    size_t pos = ccddev.find(":");
-    std::pair<std::string, std::string> newccd;
-    if (pos == ccddev.npos)
-        newccd    = std::make_pair("", "");
-    else
-        newccd    = std::make_pair(ccddev.substr(0, pos), ccddev.substr(pos + 1));
-    return newccd;
-}
-
-std::string ObsIndiClient::ccddev_encode(const std::pair<std::string, std::string> &ccd)
-{
-    return ccd.first + ":" + ccd.second;
 }
 
 uint8_t ObsIndiClient::fitsGetPixel(const std::vector<uint8_t> &data, size_t w, size_t h, int bitpix, int x, int y, int plane) const
@@ -319,40 +304,89 @@ void ObsIndiClient::dummyFillFrame()
 
 void ObsIndiClient::newDevice(INDI::BaseDevice baseDevice)
 {
-    std::string name(baseDevice.getDeviceName());
-    devices.push_back(name);
-    std::cout << "New device: " << name << std::endl;
+    std::string device_name(baseDevice.getDeviceName());
+    std::cout << "New device: " << device_name << std::endl;
+    Device dev;
+    dev.device_name = device_name;
+    dev.isCCD = false;
+    devices[device_name] = dev;
 }
 
 void ObsIndiClient::removeDevice(INDI::BaseDevice baseDevice)
 {
-    std::string name(baseDevice.getDeviceName());
-    auto it = std::find(devices.begin(), devices.end(), name);
+    std::string device_name(baseDevice.getDeviceName());
+    auto it = devices.find(device_name);
     if (it != devices.end())
         devices.erase(it);
-    std::cout << "Remove device: " << name << std::endl;
+    std::cout << "Remove device: " << device_name << std::endl;
+    if (current_ccd == device_name)
+        current_ccd = "";
 }
 
-void ObsIndiClient::newProperty(INDI::Property property)
+void ObsIndiClient::handleProperty(INDI::Property property)
 {
     std::string device_name = property.getDeviceName();
     std::string property_name = property.getName();
     auto ptype = property.getType();
-    std::cout << "New property: " << property_name << " for device " << device_name << " (" << ptype << ")" << std::endl;
-    if (ptype != INDI_BLOB)
-        return;
-
-    INDI::BaseDevice dev = getDevice(device_name.c_str());
-    if (!(dev.getDriverInterface() & INDI::BaseDevice::CCD_INTERFACE))
-        return;
-
-    auto ccd = std::make_pair(property_name, device_name);
-    ccds.push_back(ccd);
-    if (ccd == current_ccd)
-    {
-        std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
-        setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
+    switch (ptype) {
+        case INDI_BLOB: {
+            std::cout << "blob property: " << property_name
+                      << " for device " << device_name
+                      << " current_ccd = " << current_ccd
+                      << std::endl;
+            if (current_ccd == device_name) {
+                devices[device_name].property_name = property_name;
+                devices[device_name].isCCD = true;
+                std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
+                setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
+            } else {
+                INDI::BaseDevice dev = getDevice(device_name.c_str());
+                if (!(dev.getDriverInterface() & INDI::BaseDevice::CCD_INTERFACE))
+                    break;
+                devices[device_name].property_name = property_name;
+                devices[device_name].isCCD = true;
+            }
+            break;
+        }
+        /*case INDI_NUMBER: {
+            std::cout << "number property: " << property_name << " for device " << device_name << std::endl;
+            INumberVectorProperty *numberProp = property.getNumber();
+            for (int i = 0; i < numberProp->nnp; i++)
+            {
+                std::cout << "    " << numberProp->np[i].name << " = " << numberProp->np[i].value << std::endl;
+            }
+            break;
+        }
+        case INDI_TEXT : {
+            std::cout << "text property: " << property_name << " for device " << device_name << std::endl;
+            ITextVectorProperty *textProp = property.getText();
+            for (int i = 0; i < textProp->ntp; i++)
+            {
+                std::cout << "    " << textProp->tp[i].name << " = " << textProp->tp[i].text << std::endl;
+            }
+            break;
+        }
+        case INDI_SWITCH : {
+            std::cout << "switch property: " << property_name << " for device " << device_name << std::endl;
+            ISwitchVectorProperty *switchProp = property.getSwitch();
+            for (int i = 0; i < switchProp->nsp; i++)
+            {
+                std::cout << "    " << switchProp->sp[i].name << " = " << switchProp->sp[i].s << std::endl;
+            }
+            break;
+        }
+        case INDI_LIGHT : {
+            std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
+            break;
+        }*/
+        default:
+            break;
     }
+}
+
+void ObsIndiClient::newProperty(INDI::Property property)
+{
+    handleProperty(property);
 }
 
 void ObsIndiClient::updateProperty(INDI::Property property)
@@ -363,29 +397,22 @@ void ObsIndiClient::updateProperty(INDI::Property property)
 
     auto prop = std::make_pair(property_name, device_name);
 
-    if (prop == current_ccd)
+    if (device_name == current_ccd && devices[current_ccd].property_name == property_name && devices[current_ccd].isCCD)
     {
-        // std::cout << "CCD updated: " << property.getName() << " for device " << property.getDeviceName() << std::endl;
         auto blobProp = property.getBLOB();
         for (auto blob : *blobProp)
             processBLOB(&blob);
+    } else {
+        handleProperty(property);
     }
 }
 
 void ObsIndiClient::removeProperty(INDI::Property property)
 {
     std::string device_name = property.getDeviceName();
-
-    // Called when a property is removed
     std::string property_name = property.getName();
 
     std::cout << "Property removed: " << property_name << " for device " << device_name << std::endl;
-    auto ccd = std::make_pair(property_name, device_name);
-    auto it = std::find(ccds.begin(), ccds.end(), ccd);
-    if (it != ccds.end())
-    {
-        ccds.erase(it);
-    }
 }
 
 void ObsIndiClient::newMessage(INDI::BaseDevice dp, int messageID)
