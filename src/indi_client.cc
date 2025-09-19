@@ -146,9 +146,9 @@ void ObsIndiClient::indiFillFrameJpeg(const uint8_t *data, size_t size)
     jpeg_start_decompress(&cinfo);
 
     int components = cinfo.output_components; // Should be 3 for RGB
-    if (components != 3)
+    if (components != 3 && components != 1)
     {
-        std::cerr << "Expected 3 components (RGB), got " << components << std::endl;
+        std::cerr << "Expected 1 or 3 components (RGB), got " << components << std::endl;
         jpeg_destroy_decompress(&cinfo);
         return;
     }
@@ -172,10 +172,18 @@ void ObsIndiClient::indiFillFrameJpeg(const uint8_t *data, size_t size)
         int srcpos = 0;
         for (int x = 0; x < width; x++)
         {
-            rgba[dstpos++] = sl[srcpos++];
-            rgba[dstpos++] = sl[srcpos++];
-            rgba[dstpos++] = sl[srcpos++];
-            rgba[dstpos++] = 255;
+            if (components == 3) {
+                rgba[dstpos++] = sl[srcpos++];
+                rgba[dstpos++] = sl[srcpos++];
+                rgba[dstpos++] = sl[srcpos++];
+                rgba[dstpos++] = 255;
+            } else if (components == 1) {
+                uint8_t c = sl[srcpos++];
+                rgba[dstpos++] = c;
+                rgba[dstpos++] = c;
+                rgba[dstpos++] = c;
+                rgba[dstpos++] = 255;
+            }
         }
     }
 
