@@ -272,20 +272,25 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
 
 void ObsIndiClient::indiFillFrame(IBLOB *indiBlob)
 {
+    static bool skipped = false;
     uint8_t *blob = static_cast<uint8_t *>(indiBlob->blob);
     size_t size = indiBlob->size;
 
     if (!strcmp(indiBlob->format, ".fits"))
     {
         indiFillFrameFITS(blob, size);
+        skipped = false;
     }
     else if (!strcmp(indiBlob->format, ".stream_jpg"))
     {
         indiFillFrameJpeg(blob, size);
+        skipped = false;
     }
     else
     {
-        blog(LOG_INFO, "Unknown blob format %s, skipping", indiBlob->format);
+        if (!skipped)
+            blog(LOG_INFO, "Unknown blob format %s, skipping", indiBlob->format);
+        skipped = true;
         return;
     }
 }
