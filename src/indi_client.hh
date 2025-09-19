@@ -49,8 +49,8 @@ public:
         } stream_format = FORMAT_RAW;
         std::string raw_format;
 
-        size_t width = 0;
-        size_t height = 0;
+        size_t capture_width = 0, capture_height = 0;
+        size_t stream_width = 0, stream_height = 0;
         std::string device_name;
         std::string property_name;
     public:
@@ -92,7 +92,8 @@ public:
 
 private:
     std::mutex &frame_mutex;
-    size_t width, height;
+    size_t width = 0;
+    size_t height = 0;
     std::vector<uint8_t> rgba_frame;
     std::string current_ccd;
     std::map<std::string, Device> devices;

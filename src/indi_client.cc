@@ -391,34 +391,41 @@ void ObsIndiClient::handleProperty(INDI::Property property)
             INumberVectorProperty *numberProp = property.getNumber();
             for (int i = 0; i < numberProp->nnp; i++)
             {
+                //std::cout << "    " << numberProp->np[i].name << " = " << numberProp->np[i].value << std::endl;
                 std::string name = numberProp->np[i].name;
                 int value = numberProp->np[i].value;
                 if (property_name == "CCD_FRAME") {
                     if (name == "WIDTH")
-                        devices[device_name].width = value;
+                        devices[device_name].capture_width = value;
                     else if (name == "HEIGHT")
-                        devices[device_name].height = value;
+                        devices[device_name].capture_height = value;
+                }
+                else if (property_name == "CCD_STREAM_FRAME") {
+                    if (name == "WIDTH")
+                        devices[device_name].stream_width = value;
+                    else if (name == "HEIGHT")
+                        devices[device_name].stream_height = value;
                 }
             }
             break;
         }
         case INDI_TEXT : {
-            std::cout << "text property: " << property_name << " for device " << device_name << std::endl;
+            //std::cout << "text property: " << property_name << " for device " << device_name << std::endl;
             ITextVectorProperty *textProp = property.getText();
-            for (int i = 0; i < textProp->ntp; i++)
+            /*for (int i = 0; i < textProp->ntp; i++)
             {
                 std::cout << "    " << textProp->tp[i].name << " = " << textProp->tp[i].text << std::endl;
-            }
+            }*/
             break;
         }
         case INDI_SWITCH : {
-            std::cout << "switch property: " << property_name << " for device " << device_name << std::endl;
+            //std::cout << "switch property: " << property_name << " for device " << device_name << std::endl;
             ISwitchVectorProperty *switchProp = property.getSwitch();
             for (int i = 0; i < switchProp->nsp; i++)
             {
                 std::string name = switchProp->sp[i].name;
                 int value = switchProp->sp[i].s;
-                std::cout << "    " << name << " = " << value << std::endl;
+                //std::cout << "    " << name << " = " << value << std::endl;
                 if (property_name == "CCD_TRANSFER_FORMAT") {
                     if (name == "FORMAT_FITS" && value)
                         devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_FITS;
@@ -444,7 +451,7 @@ void ObsIndiClient::handleProperty(INDI::Property property)
             break;
         }
         case INDI_LIGHT : {
-            std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
+            //std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
             break;
         }
         default:
