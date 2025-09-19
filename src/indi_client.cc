@@ -63,7 +63,7 @@ bool ObsIndiClient::disconnectServer(int exit_code)
 void ObsIndiClient::selectCCD(const std::string &ccddev)
 {
     auto ccd = ccddev_decode(ccddev);
-    current_ccd = ccd;
+    selectCCD(ccd);
 }
 
 void ObsIndiClient::selectCCD(const std::pair<std::string, std::string> &ccd)
@@ -73,7 +73,7 @@ void ObsIndiClient::selectCCD(const std::pair<std::string, std::string> &ccd)
 
     auto property_name = current_ccd.first;
     auto device_name = current_ccd.second;
-    if (property_name != "" && device_name != "") {
+    if (std::find(ccds.begin(), ccds.end(), current_ccd) != ccds.end()) {
         std::cout << "Disable blob data on " << property_name << ":" << device_name << std::endl;
         setBLOBMode(B_NEVER, device_name.c_str(), property_name.c_str());
     }
@@ -82,7 +82,7 @@ void ObsIndiClient::selectCCD(const std::pair<std::string, std::string> &ccd)
 
     property_name = current_ccd.first;
     device_name = current_ccd.second;
-    if (property_name != "" && device_name != "") {
+    if (std::find(ccds.begin(), ccds.end(), current_ccd) != ccds.end()) {
         std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
         setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
     }
@@ -136,14 +136,26 @@ void ObsIndiClient::indiFillFrameJpeg(const uint8_t *data, size_t size)
 {
     struct jpeg_decompress_struct cinfo;
     struct jpeg_error_mgr jerr;
+
+    if (size < 4 || data[0] != 0xFF || data[1] != 0xD8 || data[size-2] != 0xFF || data[size-1] != 0xD9) {
+        std::cout << "Not JPEG" << std::endl;
+        return;
+    }
+
+
     cinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&cinfo);
 
+    
     // Set up JPEG data source
     jpeg_mem_src(&cinfo, data, size);
 
     // Read JPEG header
-    jpeg_read_header(&cinfo, true);
+    if (jpeg_read_header(&cinfo, true) != JPEG_HEADER_OK) {
+        std::cout << "Not JPEG" << std::endl;
+        jpeg_destroy_decompress(&cinfo);
+        return;
+    }
 
     // Start decompression (assume 8-bit RGB)
     jpeg_start_decompress(&cinfo);
@@ -281,7 +293,7 @@ void ObsIndiClient::indiFillFrame(IBLOB *indiBlob)
         indiFillFrameFITS(blob, size);
         skipped = false;
     }
-    else if (!strcmp(indiBlob->format, ".stream_jpg"))
+    else if (!strcmp(indiBlob->format, ".stream_jpg") || !strcmp(indiBlob->format, ".jpg"))
     {
         indiFillFrameJpeg(blob, size);
         skipped = false;
@@ -298,7 +310,6 @@ void ObsIndiClient::indiFillFrame(IBLOB *indiBlob)
 void ObsIndiClient::dummyFillFrame()
 {
     // Display dummy image
-    // TODO: add "no signal" text
     width = no_signal_image.width;
     height = no_signal_image.height;
     blog(LOG_INFO, "Fill dummy frame %ix%i", width, height);
