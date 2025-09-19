@@ -31,11 +31,24 @@ public:
     public:
         bool isCCD = false;
         bool blobEnabled = false;
-        enum {
+
+        enum video_method_e {
+            METHOD_CAPTURE = 0,
+            METHOD_STREAM = 1,
+        } video_method = METHOD_CAPTURE;
+
+        enum capture_format_e {
             FORMAT_FITS = 0,
             FORMAT_NATIVE = 1,
             FORMAT_XISF = 2,
-        } stream_format = FORMAT_NATIVE;
+        } capture_format = FORMAT_NATIVE;
+
+        enum stream_format_e {
+            FORMAT_MJPEG = 0,
+            FORMAT_RAW = 1,
+        } stream_format = FORMAT_RAW;
+        std::string raw_format;
+
         size_t width = 0;
         size_t height = 0;
         std::string device_name;

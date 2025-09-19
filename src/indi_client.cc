@@ -191,6 +191,7 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
     if (fits_open_memfile(&fptr, "mem://blob", READONLY, (void**)(&data), &size, 0, nullptr, &status) != 0)
     {
         blog(LOG_INFO, "Can not read fits, skipping");
+        fits_report_error(stderr, status);
         return;
     }
 
@@ -283,10 +284,47 @@ void ObsIndiClient::indiFillFrame(IBLOB *indiBlob)
         indiFillFrameJpeg(blob, size);
         skipped = false;
     }
-    else
-    {
-        if (!skipped)
+    else if (!strcmp(indiBlob->format, ".stream")) {
+        switch(devices[current_ccd].video_method)
+        {
+            case ObsIndiClient::Device::METHOD_CAPTURE: {
+                switch (devices[current_ccd].capture_format) {
+                    case ObsIndiClient::Device::FORMAT_FITS: {
+                        indiFillFrameFITS(blob, size);
+                        skipped = false;
+                        break;
+                    }
+                    default: {
+                        if (!skipped) {
+                            blog(LOG_INFO, "Unsupported format, skipping");
+                        }
+                        skipped = true;
+                        break;
+                    }
+                }
+                break;
+            }
+            case ObsIndiClient::Device::METHOD_STREAM : {
+                switch (devices[current_ccd].stream_format) {
+                    case ObsIndiClient::Device::FORMAT_MJPEG: {
+                        indiFillFrameJpeg(blob, size);
+                        skipped = false;
+                        break;
+                    }
+                    case ObsIndiClient::Device::FORMAT_RAW: {
+                        if (!skipped)
+                            blog(LOG_INFO, "Unsupported format RAW, skipping");
+                        skipped = true;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    } else {
+        if (!skipped) {
             blog(LOG_INFO, "Unknown blob format %s, skipping", indiBlob->format);
+        }
         skipped = true;
         return;
     }
@@ -348,12 +386,19 @@ void ObsIndiClient::handleProperty(INDI::Property property)
             }
             break;
         }
-        /*case INDI_NUMBER: {
-            std::cout << "number property: " << property_name << " for device " << device_name << std::endl;
+        case INDI_NUMBER: {
+            //std::cout << "number property: " << property_name << " for device " << device_name << std::endl;
             INumberVectorProperty *numberProp = property.getNumber();
             for (int i = 0; i < numberProp->nnp; i++)
             {
-                std::cout << "    " << numberProp->np[i].name << " = " << numberProp->np[i].value << std::endl;
+                std::string name = numberProp->np[i].name;
+                int value = numberProp->np[i].value;
+                if (property_name == "CCD_FRAME") {
+                    if (name == "WIDTH")
+                        devices[device_name].width = value;
+                    else if (name == "HEIGHT")
+                        devices[device_name].height = value;
+                }
             }
             break;
         }
@@ -371,14 +416,37 @@ void ObsIndiClient::handleProperty(INDI::Property property)
             ISwitchVectorProperty *switchProp = property.getSwitch();
             for (int i = 0; i < switchProp->nsp; i++)
             {
-                std::cout << "    " << switchProp->sp[i].name << " = " << switchProp->sp[i].s << std::endl;
+                std::string name = switchProp->sp[i].name;
+                int value = switchProp->sp[i].s;
+                std::cout << "    " << name << " = " << value << std::endl;
+                if (property_name == "CCD_TRANSFER_FORMAT") {
+                    if (name == "FORMAT_FITS" && value)
+                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_FITS;
+                    else if (name == "FORMAT_NATIVE" && value)
+                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_NATIVE;
+                    else if (name == "FORMAT_XISF" && value)
+                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_XISF;
+                } else if (property_name == "CCD_VIDEO_STREAM") {
+                    // TODO: some drivers can send stream 1 frame after streaming off. So if we receive frame exactly
+                    // after stream off, drop it
+                    if (name == "STREAM_ON" && value)
+                        devices[device_name].video_method = ObsIndiClient::Device::METHOD_STREAM;
+                    else if (name == "STREAM_OFF" && value)
+                        devices[device_name].video_method = ObsIndiClient::Device::METHOD_CAPTURE;
+                } else if (property_name == "CCD_STREAM_ENCODER") {
+                    if (name == "RAW" && value) {
+                        devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_RAW;
+                    } else if (name == "MJPEG" && value) {
+                        devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_MJPEG;
+                    }
+                }
             }
             break;
         }
         case INDI_LIGHT : {
             std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
             break;
-        }*/
+        }
         default:
             break;
     }
