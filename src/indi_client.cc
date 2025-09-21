@@ -30,7 +30,7 @@ int ObsIndiClient::indiFrameHeight() const
     return height;
 }
 
-const std::vector<uint8_t>& ObsIndiClient::indiFrame() const
+const std::vector<uint8_t> &ObsIndiClient::indiFrame() const
 {
     return rgba_frame;
 }
@@ -38,7 +38,8 @@ const std::vector<uint8_t>& ObsIndiClient::indiFrame() const
 std::list<std::string> ObsIndiClient::indiCCDs() const
 {
     std::list<std::string> ccds;
-    for (auto it = devices.begin(); it != devices.end(); it++) {
+    for (auto it = devices.begin(); it != devices.end(); it++)
+    {
         if (it->second.isCCD)
             ccds.push_back(it->second.device_name);
     }
@@ -70,7 +71,8 @@ void ObsIndiClient::selectCCD(const std::string &ccd)
     if (current_ccd == ccd)
         return;
 
-    if (current_ccd != "" && devices.find(current_ccd) != devices.end()) {
+    if (current_ccd != "" && devices.find(current_ccd) != devices.end())
+    {
         auto property_name = devices[current_ccd].property_name;
         auto device_name = devices[current_ccd].device_name;
         std::cout << "Disable blob data on " << property_name << ":" << device_name << std::endl;
@@ -79,8 +81,10 @@ void ObsIndiClient::selectCCD(const std::string &ccd)
 
     current_ccd = ccd;
 
-    if (current_ccd != "" && devices.find(current_ccd) != devices.end()) {
-        if (devices[current_ccd].isCCD) {
+    if (current_ccd != "" && devices.find(current_ccd) != devices.end())
+    {
+        if (devices[current_ccd].isCCD)
+        {
             auto property_name = devices[current_ccd].property_name;
             auto device_name = devices[current_ccd].device_name;
             std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
@@ -122,21 +126,21 @@ void ObsIndiClient::indiFillFrameJpeg(const uint8_t *data, size_t size)
     struct jpeg_decompress_struct cinfo;
     struct jpeg_error_mgr jerr;
 
-    if (size < 4 || data[0] != 0xFF || data[1] != 0xD8 || data[size-2] != 0xFF || data[size-1] != 0xD9) {
+    if (size < 4 || data[0] != 0xFF || data[1] != 0xD8 || data[size - 2] != 0xFF || data[size - 1] != 0xD9)
+    {
         std::cout << "Not JPEG" << std::endl;
         return;
     }
 
-
     cinfo.err = jpeg_std_error(&jerr);
     jpeg_create_decompress(&cinfo);
 
-    
     // Set up JPEG data source
     jpeg_mem_src(&cinfo, data, size);
 
     // Read JPEG header
-    if (jpeg_read_header(&cinfo, true) != JPEG_HEADER_OK) {
+    if (jpeg_read_header(&cinfo, true) != JPEG_HEADER_OK)
+    {
         std::cout << "Not JPEG" << std::endl;
         jpeg_destroy_decompress(&cinfo);
         return;
@@ -172,12 +176,15 @@ void ObsIndiClient::indiFillFrameJpeg(const uint8_t *data, size_t size)
         int srcpos = 0;
         for (int x = 0; x < width; x++)
         {
-            if (components == 3) {
+            if (components == 3)
+            {
                 rgba[dstpos++] = sl[srcpos++];
                 rgba[dstpos++] = sl[srcpos++];
                 rgba[dstpos++] = sl[srcpos++];
                 rgba[dstpos++] = 255;
-            } else if (components == 1) {
+            }
+            else if (components == 1)
+            {
                 uint8_t c = sl[srcpos++];
                 rgba[dstpos++] = c;
                 rgba[dstpos++] = c;
@@ -196,7 +203,7 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
 {
     fitsfile *fptr;
     int status = 0;
-    if (fits_open_memfile(&fptr, "mem://blob", READONLY, (void**)(&data), &size, 0, nullptr, &status) != 0)
+    if (fits_open_memfile(&fptr, "mem://blob", READONLY, (void **)(&data), &size, 0, nullptr, &status) != 0)
     {
         blog(LOG_INFO, "Can not read fits, skipping");
         fits_report_error(stderr, status);
@@ -223,10 +230,13 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
 
     int imgtype = TBYTE;
     int bpp = 1;
-    if (bitpix == 16) {
+    if (bitpix == 16)
+    {
         bpp = 2;
         imgtype = TUSHORT;
-    } else if (bitpix == 32) {
+    }
+    else if (bitpix == 32)
+    {
         bpp = 4;
         imgtype = TUINT;
     }
@@ -240,11 +250,11 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
     if (naxis == 3)
         npixels *= naxes[2];
 
-    std::vector<uint8_t> pixels(npixels * bpp);
+    this->data.resize(npixels * bpp);
 
     // Read image data
     int img_type;
-    if (fits_read_img(fptr, imgtype, 1, npixels, nullptr, pixels.data(), nullptr, &status))
+    if (fits_read_img(fptr, imgtype, 1, npixels, nullptr, this->data.data(), nullptr, &status))
     {
         std::cerr << "Error reading image data" << std::endl;
         fits_report_error(stderr, status);
@@ -252,26 +262,213 @@ void ObsIndiClient::indiFillFrameFITS(uint8_t *data, size_t size)
         return;
     }
 
+    char bayerpat[80] = {0};
+    char comment[80] = {0};
+    if (fits_read_key(fptr, TSTRING, "BAYERPAT", bayerpat, comment, &status))
+        bayerpat[0] = 0;
+    std::string bayer(bayerpat);
+
     // Close FITS file
     fits_close_file(fptr, &status);
+
+    bool raw = false;
+    if (naxis == 2)
+    {
+        raw_frame.resize(width * height);
+        raw = true;
+    }
 
     int dstpos = 0;
     for (int y = 0; y < height; y++)
     {
         for (int x = 0; x < width; x++)
         {
-            rgba_frame[dstpos++] = fitsGetPixel(pixels, width, height, bitpix, x, y, 0);
             if (naxis == 3)
             {
-                rgba_frame[dstpos++] = fitsGetPixel(pixels, width, height, bitpix, x, y, 1);
-                rgba_frame[dstpos++] = fitsGetPixel(pixels, width, height, bitpix, x, y, 2);
+                rgba_frame[dstpos++] = fitsGetPixel(this->data, width, height, bitpix, x, y, 0);
+                rgba_frame[dstpos++] = fitsGetPixel(this->data, width, height, bitpix, x, y, 1);
+                rgba_frame[dstpos++] = fitsGetPixel(this->data, width, height, bitpix, x, y, 2);
+                rgba_frame[dstpos++] = 255;
             }
             else
             {
-                rgba_frame[dstpos++] = rgba_frame[dstpos - 1];
-                rgba_frame[dstpos++] = rgba_frame[dstpos - 1];
+                raw_frame[dstpos++] = fitsGetPixel(this->data, width, height, bitpix, x, y, 0);
             }
-            rgba_frame[dstpos++] = 255;
+        }
+    }
+
+    if (raw)
+    {
+        dstpos = 0;
+        int srcpos = 0;
+        if (bayerpat[0] == 0)
+        {
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    uint8_t gray = raw_frame[srcpos++];
+                    rgba_frame[dstpos++] = gray;
+                    rgba_frame[dstpos++] = gray;
+                    rgba_frame[dstpos++] = gray;
+                    rgba_frame[dstpos++] = 255;
+                }
+        }
+        else
+        {
+            auto getPixel = [&](int x, int y) -> uint8_t
+            {
+                if (x < 0)
+                    x = 0;
+                if (y < 0)
+                    y = 0;
+                if (x >= width)
+                    x = width - 1;
+                if (y >= height)
+                    y = height - 1;
+                return raw_frame[y * width + x];
+            };
+
+            auto clamp = [](int v)
+            {
+                return static_cast<uint8_t>(std::max(0, std::min(255, v)));
+            };
+
+            bool isRGGB = (bayer == "RGGB");
+            bool isBGGR = (bayer == "BGGR");
+            bool isGRBG = (bayer == "GRBG");
+            bool isGBRG = (bayer == "GBRG");
+
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
+                {
+                    int idx = (y * width + x) * 3;
+                    int c = getPixel(x, y);
+
+                    uint8_t R, G, B;
+
+                    bool rowEven = (y % 2 == 0);
+                    bool colEven = (x % 2 == 0);
+
+                    if (isRGGB)
+                    {
+                        if (rowEven && colEven)
+                        { // R
+                            R = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            B = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else if (rowEven && !colEven)
+                        { // G (row R line)
+                            G = c;
+                            R = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                            B = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                        }
+                        else if (!rowEven && colEven)
+                        { // G (row B line)
+                            G = c;
+                            R = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                            B = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                        }
+                        else
+                        { // B
+                            B = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            R = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                    }
+
+                    else if (isBGGR)
+                    {
+                        // just swap R<->B in RGGB case
+                        if (rowEven && colEven)
+                        { // B
+                            B = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            R = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else if (rowEven && !colEven)
+                        { // G
+                            G = c;
+                            B = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                            R = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                        }
+                        else if (!rowEven && colEven)
+                        { // G
+                            G = c;
+                            B = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                            R = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                        }
+                        else
+                        { // R
+                            R = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            B = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                    }
+
+                    else if (isGRBG)
+                    {
+                        // top-left G, right R
+                        if (rowEven && colEven)
+                        { // G (row R line)
+                            G = c;
+                            R = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                            B = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                        }
+                        else if (rowEven && !colEven)
+                        { // R
+                            R = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            B = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else if (!rowEven && colEven)
+                        { // B
+                            B = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            R = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else
+                        { // G (row B line)
+                            G = c;
+                            R = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                            B = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                        }
+                    }
+
+                    else if (isGBRG)
+                    {
+                        // top-left G, right B
+                        if (rowEven && colEven)
+                        { // G (row B line)
+                            G = c;
+                            B = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                            R = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                        }
+                        else if (rowEven && !colEven)
+                        { // B
+                            B = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            R = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else if (!rowEven && colEven)
+                        { // R
+                            R = c;
+                            G = (getPixel(x - 1, y) + getPixel(x + 1, y) + getPixel(x, y - 1) + getPixel(x, y + 1)) / 4;
+                            B = (getPixel(x - 1, y - 1) + getPixel(x + 1, y - 1) + getPixel(x - 1, y + 1) + getPixel(x + 1, y + 1)) / 4;
+                        }
+                        else
+                        { // G (row R line)
+                            G = c;
+                            R = (getPixel(x - 1, y) + getPixel(x + 1, y)) / 2;
+                            B = (getPixel(x, y - 1) + getPixel(x, y + 1)) / 2;
+                        }
+                    }
+
+                    rgba_frame[dstpos++] = clamp(R);
+                    rgba_frame[dstpos++] = clamp(G);
+                    rgba_frame[dstpos++] = clamp(B);
+                    rgba_frame[dstpos++] = 255;
+                }
         }
     }
 }
@@ -292,45 +489,58 @@ void ObsIndiClient::indiFillFrame(IBLOB *indiBlob)
         indiFillFrameJpeg(blob, size);
         skipped = false;
     }
-    else if (!strcmp(indiBlob->format, ".stream")) {
-        switch(devices[current_ccd].video_method)
+    else if (!strcmp(indiBlob->format, ".stream"))
+    {
+        switch (devices[current_ccd].video_method)
         {
-            case ObsIndiClient::Device::METHOD_CAPTURE: {
-                switch (devices[current_ccd].capture_format) {
-                    case ObsIndiClient::Device::FORMAT_FITS: {
-                        indiFillFrameFITS(blob, size);
-                        skipped = false;
-                        break;
-                    }
-                    default: {
-                        if (!skipped) {
-                            blog(LOG_INFO, "Unsupported format, skipping");
-                        }
-                        skipped = true;
-                        break;
-                    }
-                }
+        case ObsIndiClient::Device::METHOD_CAPTURE:
+        {
+            switch (devices[current_ccd].capture_format)
+            {
+            case ObsIndiClient::Device::FORMAT_FITS:
+            {
+                indiFillFrameFITS(blob, size);
+                skipped = false;
                 break;
             }
-            case ObsIndiClient::Device::METHOD_STREAM : {
-                switch (devices[current_ccd].stream_format) {
-                    case ObsIndiClient::Device::FORMAT_MJPEG: {
-                        indiFillFrameJpeg(blob, size);
-                        skipped = false;
-                        break;
-                    }
-                    case ObsIndiClient::Device::FORMAT_RAW: {
-                        if (!skipped)
-                            blog(LOG_INFO, "Unsupported format RAW, skipping");
-                        skipped = true;
-                        break;
-                    }
+            default:
+            {
+                if (!skipped)
+                {
+                    blog(LOG_INFO, "Unsupported format, skipping");
                 }
+                skipped = true;
                 break;
             }
+            }
+            break;
         }
-    } else {
-        if (!skipped) {
+        case ObsIndiClient::Device::METHOD_STREAM:
+        {
+            switch (devices[current_ccd].stream_format)
+            {
+            case ObsIndiClient::Device::FORMAT_MJPEG:
+            {
+                indiFillFrameJpeg(blob, size);
+                skipped = false;
+                break;
+            }
+            case ObsIndiClient::Device::FORMAT_RAW:
+            {
+                if (!skipped)
+                    blog(LOG_INFO, "Unsupported format RAW, skipping");
+                skipped = true;
+                break;
+            }
+            }
+            break;
+        }
+        }
+    }
+    else
+    {
+        if (!skipped)
+        {
             blog(LOG_INFO, "Unknown blob format %s, skipping", indiBlob->format);
         }
         skipped = true;
@@ -374,96 +584,115 @@ void ObsIndiClient::handleProperty(INDI::Property property)
     std::string device_name = property.getDeviceName();
     std::string property_name = property.getName();
     auto ptype = property.getType();
-    switch (ptype) {
-        case INDI_BLOB: {
-            std::cout << "blob property: " << property_name
-                      << " for device " << device_name
-                      << " current_ccd = " << current_ccd
-                      << std::endl;
-            if (current_ccd == device_name) {
-                devices[device_name].property_name = property_name;
-                devices[device_name].isCCD = true;
-                std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
-                setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
-            } else {
-                INDI::BaseDevice dev = getDevice(device_name.c_str());
-                if (!(dev.getDriverInterface() & INDI::BaseDevice::CCD_INTERFACE))
-                    break;
-                devices[device_name].property_name = property_name;
-                devices[device_name].isCCD = true;
-            }
-            break;
+    switch (ptype)
+    {
+    case INDI_BLOB:
+    {
+        std::cout << "blob property: " << property_name
+                  << " for device " << device_name
+                  << " current_ccd = " << current_ccd
+                  << std::endl;
+        if (current_ccd == device_name)
+        {
+            devices[device_name].property_name = property_name;
+            devices[device_name].isCCD = true;
+            std::cout << "Enable blob data on " << property_name << ":" << device_name << std::endl;
+            setBLOBMode(B_ALSO, device_name.c_str(), property_name.c_str());
         }
-        case INDI_NUMBER: {
-            //std::cout << "number property: " << property_name << " for device " << device_name << std::endl;
-            INumberVectorProperty *numberProp = property.getNumber();
-            for (int i = 0; i < numberProp->nnp; i++)
+        else
+        {
+            INDI::BaseDevice dev = getDevice(device_name.c_str());
+            if (!(dev.getDriverInterface() & INDI::BaseDevice::CCD_INTERFACE))
+                break;
+            devices[device_name].property_name = property_name;
+            devices[device_name].isCCD = true;
+        }
+        break;
+    }
+    case INDI_NUMBER:
+    {
+        // std::cout << "number property: " << property_name << " for device " << device_name << std::endl;
+        INumberVectorProperty *numberProp = property.getNumber();
+        for (int i = 0; i < numberProp->nnp; i++)
+        {
+            // std::cout << "    " << numberProp->np[i].name << " = " << numberProp->np[i].value << std::endl;
+            std::string name = numberProp->np[i].name;
+            int value = numberProp->np[i].value;
+            if (property_name == "CCD_FRAME")
             {
-                //std::cout << "    " << numberProp->np[i].name << " = " << numberProp->np[i].value << std::endl;
-                std::string name = numberProp->np[i].name;
-                int value = numberProp->np[i].value;
-                if (property_name == "CCD_FRAME") {
-                    if (name == "WIDTH")
-                        devices[device_name].capture_width = value;
-                    else if (name == "HEIGHT")
-                        devices[device_name].capture_height = value;
+                if (name == "WIDTH")
+                    devices[device_name].capture_width = value;
+                else if (name == "HEIGHT")
+                    devices[device_name].capture_height = value;
+            }
+            else if (property_name == "CCD_STREAM_FRAME")
+            {
+                if (name == "WIDTH")
+                    devices[device_name].stream_width = value;
+                else if (name == "HEIGHT")
+                    devices[device_name].stream_height = value;
+            }
+        }
+        break;
+    }
+    case INDI_TEXT:
+    {
+        // std::cout << "text property: " << property_name << " for device " << device_name << std::endl;
+        ITextVectorProperty *textProp = property.getText();
+        /*for (int i = 0; i < textProp->ntp; i++)
+        {
+            std::cout << "    " << textProp->tp[i].name << " = " << textProp->tp[i].text << std::endl;
+        }*/
+        break;
+    }
+    case INDI_SWITCH:
+    {
+        // std::cout << "switch property: " << property_name << " for device " << device_name << std::endl;
+        ISwitchVectorProperty *switchProp = property.getSwitch();
+        for (int i = 0; i < switchProp->nsp; i++)
+        {
+            std::string name = switchProp->sp[i].name;
+            int value = switchProp->sp[i].s;
+            // std::cout << "    " << name << " = " << value << std::endl;
+            if (property_name == "CCD_TRANSFER_FORMAT")
+            {
+                if (name == "FORMAT_FITS" && value)
+                    devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_FITS;
+                else if (name == "FORMAT_NATIVE" && value)
+                    devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_NATIVE;
+                else if (name == "FORMAT_XISF" && value)
+                    devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_XISF;
+            }
+            else if (property_name == "CCD_VIDEO_STREAM")
+            {
+                // TODO: some drivers can send stream 1 frame after streaming off. So if we receive frame exactly
+                // after stream off, drop it
+                if (name == "STREAM_ON" && value)
+                    devices[device_name].video_method = ObsIndiClient::Device::METHOD_STREAM;
+                else if (name == "STREAM_OFF" && value)
+                    devices[device_name].video_method = ObsIndiClient::Device::METHOD_CAPTURE;
+            }
+            else if (property_name == "CCD_STREAM_ENCODER")
+            {
+                if (name == "RAW" && value)
+                {
+                    devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_RAW;
                 }
-                else if (property_name == "CCD_STREAM_FRAME") {
-                    if (name == "WIDTH")
-                        devices[device_name].stream_width = value;
-                    else if (name == "HEIGHT")
-                        devices[device_name].stream_height = value;
+                else if (name == "MJPEG" && value)
+                {
+                    devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_MJPEG;
                 }
             }
-            break;
         }
-        case INDI_TEXT : {
-            //std::cout << "text property: " << property_name << " for device " << device_name << std::endl;
-            ITextVectorProperty *textProp = property.getText();
-            /*for (int i = 0; i < textProp->ntp; i++)
-            {
-                std::cout << "    " << textProp->tp[i].name << " = " << textProp->tp[i].text << std::endl;
-            }*/
-            break;
-        }
-        case INDI_SWITCH : {
-            //std::cout << "switch property: " << property_name << " for device " << device_name << std::endl;
-            ISwitchVectorProperty *switchProp = property.getSwitch();
-            for (int i = 0; i < switchProp->nsp; i++)
-            {
-                std::string name = switchProp->sp[i].name;
-                int value = switchProp->sp[i].s;
-                //std::cout << "    " << name << " = " << value << std::endl;
-                if (property_name == "CCD_TRANSFER_FORMAT") {
-                    if (name == "FORMAT_FITS" && value)
-                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_FITS;
-                    else if (name == "FORMAT_NATIVE" && value)
-                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_NATIVE;
-                    else if (name == "FORMAT_XISF" && value)
-                        devices[device_name].capture_format = ObsIndiClient::Device::FORMAT_XISF;
-                } else if (property_name == "CCD_VIDEO_STREAM") {
-                    // TODO: some drivers can send stream 1 frame after streaming off. So if we receive frame exactly
-                    // after stream off, drop it
-                    if (name == "STREAM_ON" && value)
-                        devices[device_name].video_method = ObsIndiClient::Device::METHOD_STREAM;
-                    else if (name == "STREAM_OFF" && value)
-                        devices[device_name].video_method = ObsIndiClient::Device::METHOD_CAPTURE;
-                } else if (property_name == "CCD_STREAM_ENCODER") {
-                    if (name == "RAW" && value) {
-                        devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_RAW;
-                    } else if (name == "MJPEG" && value) {
-                        devices[device_name].stream_format = ObsIndiClient::Device::FORMAT_MJPEG;
-                    }
-                }
-            }
-            break;
-        }
-        case INDI_LIGHT : {
-            //std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
-            break;
-        }
-        default:
-            break;
+        break;
+    }
+    case INDI_LIGHT:
+    {
+        // std::cout << "light property: " << property_name << " for device " << device_name << std::endl;
+        break;
+    }
+    default:
+        break;
     }
 }
 
@@ -485,7 +714,9 @@ void ObsIndiClient::updateProperty(INDI::Property property)
         auto blobProp = property.getBLOB();
         for (auto blob : *blobProp)
             processBLOB(&blob);
-    } else {
+    }
+    else
+    {
         handleProperty(property);
     }
 }
@@ -500,7 +731,7 @@ void ObsIndiClient::removeProperty(INDI::Property property)
 
 void ObsIndiClient::newMessage(INDI::BaseDevice dp, int messageID)
 {
-    //std::cout << "New message from " << dp.getDeviceName() << ": " << dp.messageQueue(messageID) << std::endl;
+    // std::cout << "New message from " << dp.getDeviceName() << ": " << dp.messageQueue(messageID) << std::endl;
 }
 
 void ObsIndiClient::processBLOB(IBLOB *indiBlob)

@@ -94,6 +94,8 @@ private:
     std::mutex &frame_mutex;
     size_t width = 0;
     size_t height = 0;
+    std::vector<uint8_t> data;
+    std::vector<uint8_t> raw_frame;
     std::vector<uint8_t> rgba_frame;
     std::string current_ccd;
     std::map<std::string, Device> devices;
