@@ -15,3 +15,6 @@ astrostream plugin obtains frames or video stream from INDIlib server. This allo
 - libjpeg-dev
 - libcfitsio-dev
 - cmake, g++, etc...
+
+# Screenshot
+<img width="1920" height="1046" alt="image" src="https://github.com/user-attachments/assets/fb5c9d4d-600f-4b23-9b4f-ae3262ef049e" />
